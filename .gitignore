@@ -1,0 +1,12 @@
+build/
+install/
+log/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+/tmp/*
+!/tmp/README.md
+!/tmp/*.py
+!/tmp/*.sh
+/tmp/ros_logs/
