@@ -8,6 +8,12 @@ The repository, workspace, and ROS package are named `nanodet_ros2`. This name
 reflects the current bounding-box detector without implying that image
 segmentation is implemented.
 
+## Demo
+
+[![NanoDet ROS 2 detecting a person from a live camera](docs/media/nanodet_ros2_demo.png)](docs/media/nanodet_ros2_demo.webm)
+
+Click the preview to play the full 11-second live camera detection recording.
+
 ## Published interface
 
 | Direction | Default topic | Type |
