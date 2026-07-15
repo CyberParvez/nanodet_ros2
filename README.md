@@ -10,9 +10,10 @@ segmentation is implemented.
 
 ## Demo
 
-[![NanoDet ROS 2 detecting a person from a live camera](docs/media/nanodet_ros2_demo.png)](docs/media/nanodet_ros2_demo.webm)
+https://github.com/user-attachments/assets/a38bb6cf-d3de-47c0-9ebf-ba7ceb82b930
 
-Click the preview to play the full 11-second live camera detection recording.
+The recording shows NanoDet running on the live ROS 2 camera stream with a
+person bounding box and inference-time overlay.
 
 ## Published interface
 
