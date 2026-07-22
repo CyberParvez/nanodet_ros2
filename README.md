@@ -1,12 +1,15 @@
 # NanoDet ROS 2 camera detection
 
-This workspace contains a resource-conscious ROS 2 Jazzy node that runs
+This workspace contains a resource-conscious ROS 2 Humble node that runs
 NanoDet-Plus-m at 320 x 320 on a live image topic. It publishes both standard
 2D detection messages and an optional image with bounding boxes.
 
 The repository, workspace, and ROS package are named `nanodet_ros2`. This name
 reflects the current bounding-box detector without implying that image
 segmentation is implemented.
+
+This repository is checked out in the SyncRobot workspace as
+`/home/syncrobot/syncrobot_ws/src/nanodet_ros2`.
 
 ## Published interface
 
@@ -23,8 +26,8 @@ camera-image coordinates.
 ## Build
 
 ```bash
-cd ~/nanodet_ros2
-source /opt/ros/jazzy/setup.bash
+cd ~/syncrobot_ws/src/nanodet_ros2
+source /opt/ros/humble/setup.bash
 python3 -m venv --system-site-packages .venv
 .venv/bin/python -m pip install -r requirements.txt
 .venv/bin/python -m colcon build --symlink-install
@@ -32,9 +35,10 @@ source install/setup.bash
 ```
 
 The workspace-local virtual environment supplies ONNX Runtime while retaining
-access to the ROS packages installed under `/opt/ros/jazzy`. Building through
+access to the ROS packages installed under `/opt/ros/humble`. Building through
 `.venv/bin/python` also makes the installed detector executable use that
-environment automatically.
+environment automatically. If the venv already exists with NumPy 2 installed,
+recreate it after updating `requirements.txt` so `cv_bridge` can import cleanly.
 
 ## Run
 
@@ -112,8 +116,8 @@ or `reliable`; the camera publisher and detector input must use compatible QoS.
 Run the temporary camera publisher in one terminal:
 
 ```bash
-cd ~/nanodet_ros2
-source /opt/ros/jazzy/setup.bash
+cd ~/syncrobot_ws/src/nanodet_ros2
+source /opt/ros/humble/setup.bash
 source install/setup.bash
 .venv/bin/python tmp/laptop_camera_publisher.py --ros-args \
   -p device:=/dev/video0 \
@@ -125,13 +129,14 @@ source install/setup.bash
 Run the resource-limited detector in a second terminal:
 
 ```bash
-cd ~/nanodet_ros2
-source /opt/ros/jazzy/setup.bash
+cd ~/syncrobot_ws/src/nanodet_ros2
+source /opt/ros/humble/setup.bash
 source install/setup.bash
 ros2 launch nanodet_ros2 detector.launch.py \
   runtime:=onnxruntime runtime_threads:=2 \
   runtime_allow_spinning:=false max_rate_hz:=5.0 \
-  input_reliability:=reliable output_reliability:=reliable
+  input_reliability:=reliable output_reliability:=reliable \
+  allowed_labels:=person,car,bicycle
 ```
 
 Open `htop` in a third terminal and filter for `detector_node` with `F4`. Open
@@ -139,6 +144,9 @@ RViz in another terminal, add an **Image** display, select `/nanodet/image`, and
 set reliability to **Reliable**. To compare CPU usage, stop only the detector
 and rerun the same launch command with `runtime_allow_spinning:=true`; leave the
 camera and RViz running so the workload stays comparable.
+
+Set `allowed_labels:=person` to publish and draw only person detections. You
+can list multiple labels with commas, for example `allowed_labels:=person,car`.
 
 ## Model scope
 
@@ -149,13 +157,6 @@ matching class list.
 
 This output is suitable for visualization and experimentation. Do not use a
 2D detector as the robot's only collision-avoidance or safety input.
-
-## Demo
-
-https://github.com/user-attachments/assets/a38bb6cf-d3de-47c0-9ebf-ba7ceb82b930
-
-The recording shows NanoDet running on the live ROS 2 camera stream with a
-person bounding box and inference-time overlay.
 
 ## Model attribution
 

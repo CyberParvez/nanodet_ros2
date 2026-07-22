@@ -26,6 +26,7 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument("max_rate_hz", default_value="5.0"),
         DeclareLaunchArgument("input_reliability", default_value="best_effort"),
         DeclareLaunchArgument("output_reliability", default_value="best_effort"),
+        DeclareLaunchArgument("allowed_labels", default_value=""),
         DeclareLaunchArgument("runtime", default_value="auto"),
         DeclareLaunchArgument("runtime_threads", default_value="4"),
         DeclareLaunchArgument("runtime_allow_spinning", default_value="false"),
@@ -55,6 +56,7 @@ def generate_launch_description() -> LaunchDescription:
                 ),
                 "input_reliability": LaunchConfiguration("input_reliability"),
                 "output_reliability": LaunchConfiguration("output_reliability"),
+                "allowed_labels": LaunchConfiguration("allowed_labels"),
                 "runtime": LaunchConfiguration("runtime"),
                 "runtime_threads": ParameterValue(
                     LaunchConfiguration("runtime_threads"), value_type=int

@@ -1,6 +1,7 @@
 """ROS 2 node that applies NanoDet to a sensor_msgs/Image stream."""
 
 import os
+import re
 import time
 
 import cv2
@@ -58,6 +59,7 @@ class NanoDetNode(Node):
         self.declare_parameter("max_rate_hz", 10.0)
         self.declare_parameter("input_reliability", "best_effort")
         self.declare_parameter("output_reliability", "best_effort")
+        self.declare_parameter("allowed_labels", "")
         self.declare_parameter("runtime", "auto")
         self.declare_parameter("runtime_threads", 4)
         self.declare_parameter("runtime_allow_spinning", False)
@@ -82,6 +84,9 @@ class NanoDetNode(Node):
         )
         self._draw_performance = bool(
             self.get_parameter("draw_performance").value
+        )
+        self._allowed_labels = self._parse_allowed_labels(
+            str(self.get_parameter("allowed_labels").value)
         )
         self._last_status_log = -float("inf")
         self._processed_since_status = 0
@@ -136,6 +141,7 @@ class NanoDetNode(Node):
             f"{self.get_parameter('runtime_allow_spinning').value}; "
             f"QoS={input_reliability} input/{output_reliability} output; "
             f"model={model_path}"
+            f"{'; labels=' + ','.join(sorted(self._allowed_labels)) if self._allowed_labels else ''}"
         )
 
     def _store_latest_image(self, message: Image) -> None:
@@ -156,14 +162,13 @@ class NanoDetNode(Node):
         try:
             image = self._bridge.imgmsg_to_cv2(message, desired_encoding="bgr8")
             result = self._detector.detect(image)
+            detections = self._filter_detections(result.detections)
             self._processed_since_status += 1
         except Exception as error:  # Keep a malformed frame from stopping the node.
             self.get_logger().error(f"Image inference failed: {error}")
             return
 
-        detection_message = self._to_detection_message(
-            message, result.detections
-        )
+        detection_message = self._to_detection_message(message, detections)
         if not self._publish_if_active(
             self._detections_publisher, detection_message
         ):
@@ -171,9 +176,7 @@ class NanoDetNode(Node):
 
         has_image_subscriber = self._annotated_publisher.get_subscription_count() > 0
         if self._publish_annotated and has_image_subscriber:
-            annotated = self._draw_detections(
-                image, result.detections, result.inference_ms
-            )
+            annotated = self._draw_detections(image, detections, result.inference_ms)
             annotated_message = self._bridge.cv2_to_imgmsg(
                 annotated, encoding="bgr8"
             )
@@ -197,12 +200,34 @@ class NanoDetNode(Node):
                     f"; annotated={self._annotated_since_status / status_period:.1f} Hz"
                 )
             self.get_logger().info(
-                f"Detected {len(result.detections)} objects in "
+                f"Detected {len(detections)} objects in "
                 f"{result.inference_ms:.1f} ms{rates}"
             )
             self._last_status_log = now
             self._processed_since_status = 0
             self._annotated_since_status = 0
+
+    @staticmethod
+    def _parse_allowed_labels(value: str) -> frozenset[str]:
+        """Parse a comma- or whitespace-separated label allow-list."""
+        labels = {
+            part.strip().lower()
+            for part in re.split(r"[,\s]+", value.strip())
+            if part.strip()
+        }
+        return frozenset(labels)
+
+    def _filter_detections(
+        self, detections: tuple[Detection, ...]
+    ) -> tuple[Detection, ...]:
+        """Keep only detections whose labels are explicitly allowed."""
+        if not self._allowed_labels:
+            return detections
+        return tuple(
+            detection
+            for detection in detections
+            if detection.label.lower() in self._allowed_labels
+        )
 
     @staticmethod
     def _publish_if_active(publisher, message) -> bool:

@@ -1,2 +1,3 @@
+numpy<2
 # ONNX Runtime is substantially faster than this machine's OpenCV DNN backend.
 onnxruntime>=1.19,<2

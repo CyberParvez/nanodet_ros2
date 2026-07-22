@@ -36,8 +36,8 @@ CAMERA_WIDTH=320 CAMERA_HEIGHT=240 CAMERA_FPS=6 DETECTOR_FPS=5 \
 In another terminal, view the annotated image:
 
 ```bash
-cd ~/nanodet_ros2
-source /opt/ros/jazzy/setup.bash
+cd ~/syncrobot_ws/src/nanodet_ros2
+source /opt/ros/humble/setup.bash
 source install/setup.bash
 rqt_image_view /nanodet/image
 ```

@@ -23,7 +23,7 @@ if [[ ! -f "${WORKSPACE}/install/setup.bash" ]]; then
   exit 1
 fi
 
-source /opt/ros/jazzy/setup.bash
+source /opt/ros/humble/setup.bash
 source "${WORKSPACE}/install/setup.bash"
 set -u
 
