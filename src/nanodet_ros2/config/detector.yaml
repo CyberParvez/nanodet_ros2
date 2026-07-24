@@ -15,4 +15,5 @@ nanodet_detector:
     runtime_threads: 4
     runtime_allow_spinning: false
     publish_annotated: true
+    publish_live_annotated: false
     draw_performance: true

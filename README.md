@@ -105,12 +105,17 @@ The defaults are intended for visualization rather than robot control:
 - Bounding boxes are drawn only while the annotated-image topic has a
   subscriber.
 - Set `publish_annotated:=false` to publish detection data only.
+- Set `publish_live_annotated:=true` to publish every current camera frame with
+  the most recent detection boxes. This keeps visualization latency near the
+  camera latency while inference remains limited by `max_rate_hz`. Boxes update
+  at the inference rate, while the background image updates at the camera rate.
 
 All parameters can be edited in
 `src/nanodet_ros2/config/detector.yaml` or overridden on launch. Useful launch
 arguments include `confidence_threshold`, `nms_threshold`, `max_rate_hz`,
-`runtime`, `runtime_threads`, `runtime_allow_spinning`, `publish_annotated`, and
-`model_path`. `model_metadata_path` can select a non-adjacent metadata file.
+`runtime`, `runtime_threads`, `runtime_allow_spinning`, `publish_annotated`,
+`publish_live_annotated`, `draw_performance`, and `model_path`.
+`model_metadata_path` can select a non-adjacent metadata file.
 `input_reliability` and `output_reliability` accept `best_effort` or `reliable`;
 the camera publisher and detector input must use compatible QoS.
 

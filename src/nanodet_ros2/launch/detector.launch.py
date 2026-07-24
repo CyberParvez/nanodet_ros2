@@ -32,6 +32,8 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument("runtime_threads", default_value="4"),
         DeclareLaunchArgument("runtime_allow_spinning", default_value="false"),
         DeclareLaunchArgument("publish_annotated", default_value="true"),
+        DeclareLaunchArgument("publish_live_annotated", default_value="false"),
+        DeclareLaunchArgument("draw_performance", default_value="true"),
     ]
 
     detector = Node(
@@ -68,6 +70,13 @@ def generate_launch_description() -> LaunchDescription:
                 ),
                 "publish_annotated": ParameterValue(
                     LaunchConfiguration("publish_annotated"), value_type=bool
+                ),
+                "publish_live_annotated": ParameterValue(
+                    LaunchConfiguration("publish_live_annotated"),
+                    value_type=bool,
+                ),
+                "draw_performance": ParameterValue(
+                    LaunchConfiguration("draw_performance"), value_type=bool
                 ),
             },
         ],

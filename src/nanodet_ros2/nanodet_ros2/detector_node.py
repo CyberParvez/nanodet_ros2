@@ -65,6 +65,7 @@ class NanoDetNode(Node):
         self.declare_parameter("runtime_threads", 4)
         self.declare_parameter("runtime_allow_spinning", False)
         self.declare_parameter("publish_annotated", True)
+        self.declare_parameter("publish_live_annotated", False)
         self.declare_parameter("draw_performance", True)
 
         model_path = str(self.get_parameter("model_path").value).strip()
@@ -84,12 +85,19 @@ class NanoDetNode(Node):
             1.0 / self._max_rate_hz if self._max_rate_hz > 0.0 else 0.0
         )
         self._latest_image_message = None
+        self._latest_cv_image = None
         self._publish_annotated = bool(
             self.get_parameter("publish_annotated").value
+        )
+        self._publish_live_annotated = bool(
+            self.get_parameter("publish_live_annotated").value
         )
         self._draw_performance = bool(
             self.get_parameter("draw_performance").value
         )
+        self._latest_detections: tuple[Detection, ...] = ()
+        self._latest_inference_ms = 0.0
+        self._latest_detection_image_size: tuple[int, int] | None = None
         self._allowed_labels = self._parse_allowed_labels(
             str(self.get_parameter("allowed_labels").value)
         )
@@ -140,7 +148,7 @@ class NanoDetNode(Node):
             )
         else:
             self._subscription = self.create_subscription(
-                Image, input_topic, self._process_image, input_qos
+                Image, input_topic, self._process_unlimited_image, input_qos
             )
             self._inference_timer = None
 
@@ -155,28 +163,50 @@ class NanoDetNode(Node):
             f"input={model_config.input_size[0]}x{model_config.input_size[1]}; "
             f"classes={','.join(model_config.class_names)}; "
             f"metadata={model_config.metadata_path or 'legacy defaults'}"
-            f"{'; labels=' + ','.join(sorted(self._allowed_labels)) if self._allowed_labels else ''}"
+            f"; live annotations={self._publish_live_annotated}"
+            + (
+                "; labels=" + ",".join(sorted(self._allowed_labels))
+                if self._allowed_labels
+                else ""
+            )
         )
 
     def _store_latest_image(self, message: Image) -> None:
-        """Retain the newest frame without coupling input and inference rates."""
+        """Retain the newest frame and optionally publish a live visualization."""
         self._latest_image_message = message
+        self._latest_cv_image = self._publish_live_annotation(message)
 
     def _process_latest_image(self) -> None:
         """Process at the configured rate using the freshest available frame."""
         message = self._latest_image_message
         if message is None:
             return
+        image = self._latest_cv_image
         self._latest_image_message = None
-        self._process_image(message)
+        self._latest_cv_image = None
+        self._process_image(message, image=image)
 
-    def _process_image(self, message: Image) -> None:
+    def _process_unlimited_image(self, message: Image) -> None:
+        """Publish the current frame first, then run unrestricted inference."""
+        image = self._publish_live_annotation(message)
+        self._process_image(message, image=image)
+
+    def _process_image(self, message: Image, image=None) -> None:
         now = time.monotonic()
 
         try:
-            image = self._bridge.imgmsg_to_cv2(message, desired_encoding="bgr8")
+            if image is None:
+                image = self._bridge.imgmsg_to_cv2(
+                    message, desired_encoding="bgr8"
+                )
             result = self._detector.detect(image)
             detections = self._filter_detections(result.detections)
+            self._latest_detections = detections
+            self._latest_inference_ms = result.inference_ms
+            self._latest_detection_image_size = (
+                image.shape[1],
+                image.shape[0],
+            )
             self._processed_since_status += 1
         except Exception as error:  # Keep a malformed frame from stopping the node.
             self.get_logger().error(f"Image inference failed: {error}")
@@ -189,17 +219,15 @@ class NanoDetNode(Node):
             return
 
         has_image_subscriber = self._annotated_publisher.get_subscription_count() > 0
-        if self._publish_annotated and has_image_subscriber:
-            annotated = self._draw_detections(image, detections, result.inference_ms)
-            annotated_message = self._bridge.cv2_to_imgmsg(
-                annotated, encoding="bgr8"
-            )
-            annotated_message.header = message.header
-            if not self._publish_if_active(
-                self._annotated_publisher, annotated_message
+        if (
+            self._publish_annotated
+            and not self._publish_live_annotated
+            and has_image_subscriber
+        ):
+            if not self._publish_annotated_image(
+                message, image, detections, result.inference_ms
             ):
                 return
-            self._annotated_since_status += 1
 
         if now - self._last_status_log >= 5.0:
             status_period = (
@@ -220,6 +248,80 @@ class NanoDetNode(Node):
             self._last_status_log = now
             self._processed_since_status = 0
             self._annotated_since_status = 0
+
+    def _publish_live_annotation(self, message: Image):
+        """Publish a current camera frame using the latest detection result."""
+        if (
+            not self._publish_annotated
+            or not self._publish_live_annotated
+            or self._annotated_publisher.get_subscription_count() == 0
+        ):
+            return None
+
+        try:
+            image = self._bridge.imgmsg_to_cv2(
+                message, desired_encoding="bgr8"
+            )
+            detections = self._detections_for_image(
+                image.shape[1], image.shape[0]
+            )
+            self._publish_annotated_image(
+                message,
+                image,
+                detections,
+                self._latest_inference_ms,
+            )
+            return image
+        except Exception as error:
+            self.get_logger().error(f"Live annotation failed: {error}")
+            return None
+
+    def _publish_annotated_image(
+        self,
+        message: Image,
+        image,
+        detections: tuple[Detection, ...],
+        inference_ms: float,
+    ) -> bool:
+        annotated = self._draw_detections(image, detections, inference_ms)
+        annotated_message = self._bridge.cv2_to_imgmsg(
+            annotated, encoding="bgr8"
+        )
+        annotated_message.header = message.header
+        if not self._publish_if_active(
+            self._annotated_publisher, annotated_message
+        ):
+            return False
+        self._annotated_since_status += 1
+        return True
+
+    def _detections_for_image(
+        self, width: int, height: int
+    ) -> tuple[Detection, ...]:
+        """Scale cached boxes if the camera resolution changes at runtime."""
+        source_size = self._latest_detection_image_size
+        if source_size is None or source_size == (width, height):
+            return self._latest_detections
+
+        source_width, source_height = source_size
+        if source_width <= 0 or source_height <= 0:
+            return ()
+        scale_x = width / source_width
+        scale_y = height / source_height
+        return tuple(
+            Detection(
+                detection.class_id,
+                detection.label,
+                detection.score,
+                (
+                    detection.box[0] * scale_x,
+                    detection.box[1] * scale_y,
+                    detection.box[2] * scale_x,
+                    detection.box[3] * scale_y,
+                ),
+            )
+            for detection in self._latest_detections
+        )
 
     @staticmethod
     def _parse_allowed_labels(value: str) -> frozenset[str]:
