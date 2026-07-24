@@ -16,6 +16,7 @@ def generate_launch_description() -> LaunchDescription:
 
     arguments = [
         DeclareLaunchArgument("model_path", default_value=""),
+        DeclareLaunchArgument("model_metadata_path", default_value=""),
         DeclareLaunchArgument("input_topic", default_value="/camera/image_raw"),
         DeclareLaunchArgument(
             "detections_topic", default_value="/nanodet/detections"
@@ -42,6 +43,7 @@ def generate_launch_description() -> LaunchDescription:
             config_file,
             {
                 "model_path": LaunchConfiguration("model_path"),
+                "model_metadata_path": LaunchConfiguration("model_metadata_path"),
                 "input_topic": LaunchConfiguration("input_topic"),
                 "detections_topic": LaunchConfiguration("detections_topic"),
                 "annotated_topic": LaunchConfiguration("annotated_topic"),

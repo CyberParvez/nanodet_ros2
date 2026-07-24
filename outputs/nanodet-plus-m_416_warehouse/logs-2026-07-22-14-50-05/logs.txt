@@ -1,0 +1,14 @@
+[NanoDet][07-22 14:50:05]INFO: Set random seed to 42
+[NanoDet][07-22 14:50:05]INFO: Setting up data...
+[NanoDet][07-22 14:50:05]INFO: Creating model...
+[NanoDet][07-22 14:50:05]INFO: Skip loading parameter head.gfl_cls.0.weight, required shapetorch.Size([36, 96, 1, 1]), loaded shapetorch.Size([112, 96, 1, 1]).
+[NanoDet][07-22 14:50:05]INFO: Skip loading parameter head.gfl_cls.0.bias, required shapetorch.Size([36]), loaded shapetorch.Size([112]).
+[NanoDet][07-22 14:50:05]INFO: Skip loading parameter head.gfl_cls.1.weight, required shapetorch.Size([36, 96, 1, 1]), loaded shapetorch.Size([112, 96, 1, 1]).
+[NanoDet][07-22 14:50:05]INFO: Skip loading parameter head.gfl_cls.1.bias, required shapetorch.Size([36]), loaded shapetorch.Size([112]).
+[NanoDet][07-22 14:50:05]INFO: Skip loading parameter head.gfl_cls.2.weight, required shapetorch.Size([36, 96, 1, 1]), loaded shapetorch.Size([112, 96, 1, 1]).
+[NanoDet][07-22 14:50:05]INFO: Skip loading parameter head.gfl_cls.2.bias, required shapetorch.Size([36]), loaded shapetorch.Size([112]).
+[NanoDet][07-22 14:50:05]INFO: Skip loading parameter head.gfl_cls.3.weight, required shapetorch.Size([36, 96, 1, 1]), loaded shapetorch.Size([112, 96, 1, 1]).
+[NanoDet][07-22 14:50:05]INFO: Skip loading parameter head.gfl_cls.3.bias, required shapetorch.Size([36]), loaded shapetorch.Size([112]).
+[NanoDet][07-22 14:50:05]INFO: Skip loading parameter aux_head.gfl_cls.weight, required shapetorch.Size([4, 192, 3, 3]), loaded shapetorch.Size([80, 192, 3, 3]).
+[NanoDet][07-22 14:50:05]INFO: Skip loading parameter aux_head.gfl_cls.bias, required shapetorch.Size([4]), loaded shapetorch.Size([80]).
+[NanoDet][07-22 14:50:05]INFO: Loaded model weight from checkpoints/nanodet-plus-m_416_checkpoint.ckpt

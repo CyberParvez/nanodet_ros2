@@ -1,7 +1,10 @@
 """Small NumPy/OpenCV inference wrapper for NanoDet-Plus ONNX models."""
 
 from dataclasses import dataclass
+import hashlib
+import json
 import math
+from pathlib import Path
 import time
 from typing import Sequence
 
@@ -24,6 +27,139 @@ COCO_CLASS_NAMES = (
     "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase",
     "scissors", "teddy_bear", "hair_drier", "toothbrush",
 )
+
+DEFAULT_INPUT_SIZE = (320, 320)
+DEFAULT_STRIDES = (8, 16, 32, 64)
+DEFAULT_REG_MAX = 7
+DEFAULT_MEAN = (103.53, 116.28, 123.675)
+DEFAULT_STD = (57.375, 57.12, 58.395)
+
+
+@dataclass(frozen=True)
+class NanoDetModelConfig:
+    """Validated model geometry and preprocessing configuration."""
+
+    input_size: tuple[int, int] = DEFAULT_INPUT_SIZE
+    class_names: tuple[str, ...] = COCO_CLASS_NAMES
+    strides: tuple[int, ...] = DEFAULT_STRIDES
+    reg_max: int = DEFAULT_REG_MAX
+    mean: tuple[float, float, float] = DEFAULT_MEAN
+    std: tuple[float, float, float] = DEFAULT_STD
+    metadata_path: str | None = None
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _fixed_length_values(
+    document: dict,
+    key: str,
+    default: Sequence,
+    length: int,
+    value_type,
+) -> tuple:
+    values = document.get(key, default)
+    if not isinstance(values, (list, tuple)) or len(values) != length:
+        raise ValueError(f"Model metadata {key} must contain {length} values")
+    return tuple(value_type(value) for value in values)
+
+
+def load_model_config(
+    model_path: str, metadata_path: str = ""
+) -> NanoDetModelConfig:
+    """Load an explicit or adjacent metadata sidecar, or use COCO defaults."""
+
+    model = Path(model_path).expanduser().resolve()
+    explicit_metadata = metadata_path.strip()
+    metadata = (
+        Path(explicit_metadata).expanduser().resolve()
+        if explicit_metadata
+        else model.with_suffix(".metadata.json")
+    )
+    if not metadata.is_file():
+        if explicit_metadata:
+            raise FileNotFoundError(f"NanoDet metadata not found: {metadata}")
+        return NanoDetModelConfig()
+
+    try:
+        document = json.loads(metadata.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError(
+            f"Could not read NanoDet metadata {metadata}: {error}"
+        ) from error
+    if not isinstance(document, dict):
+        raise ValueError("NanoDet metadata must be a JSON object")
+    if document.get("input_layout", "NCHW") != "NCHW":
+        raise ValueError("NanoDet metadata input_layout must be NCHW")
+    if document.get("input_color", "BGR") != "BGR":
+        raise ValueError("NanoDet metadata input_color must be BGR")
+
+    input_size = _fixed_length_values(
+        document, "input_size", DEFAULT_INPUT_SIZE, 2, int
+    )
+    if any(value <= 0 for value in input_size):
+        raise ValueError("NanoDet metadata input_size values must be positive")
+    class_values = document.get("class_names", COCO_CLASS_NAMES)
+    if not isinstance(class_values, (list, tuple)) or not class_values:
+        raise ValueError("NanoDet metadata class_names must be a non-empty list")
+    class_names = tuple(str(value).strip() for value in class_values)
+    if any(not value for value in class_names) or len(set(class_names)) != len(
+        class_names
+    ):
+        raise ValueError("NanoDet metadata class_names must be non-empty and unique")
+    stride_values = document.get("strides", DEFAULT_STRIDES)
+    if not isinstance(stride_values, (list, tuple)) or not stride_values:
+        raise ValueError("NanoDet metadata strides must be a non-empty list")
+    strides = tuple(int(value) for value in stride_values)
+    if any(value <= 0 for value in strides):
+        raise ValueError("NanoDet metadata strides must be positive")
+    reg_max = int(document.get("reg_max", DEFAULT_REG_MAX))
+    if reg_max < 0:
+        raise ValueError("NanoDet metadata reg_max must be non-negative")
+    mean = _fixed_length_values(document, "mean", DEFAULT_MEAN, 3, float)
+    std = _fixed_length_values(document, "std", DEFAULT_STD, 3, float)
+    if any(value == 0.0 for value in std):
+        raise ValueError("NanoDet metadata std values must be non-zero")
+
+    expected_priors = sum(
+        math.ceil(input_size[0] / stride) * math.ceil(input_size[1] / stride)
+        for stride in strides
+    )
+    expected_channels = len(class_names) + 4 * (reg_max + 1)
+    expected_output_shape = (1, expected_priors, expected_channels)
+    declared_output_shape = document.get("output_shape")
+    if declared_output_shape is not None:
+        declared_output_shape = tuple(int(value) for value in declared_output_shape)
+        if declared_output_shape != expected_output_shape:
+            raise ValueError(
+                "NanoDet metadata output_shape does not match its classes and "
+                "geometry: "
+                f"expected {expected_output_shape}, got {declared_output_shape}"
+            )
+
+    declared_digest = str(document.get("sha256", "")).strip().lower()
+    if declared_digest:
+        actual_digest = _sha256(model)
+        if declared_digest != actual_digest:
+            raise ValueError(
+                f"NanoDet model SHA-256 mismatch for {model}: "
+                f"expected {declared_digest}, got {actual_digest}"
+            )
+
+    return NanoDetModelConfig(
+        input_size=input_size,
+        class_names=class_names,
+        strides=strides,
+        reg_max=reg_max,
+        mean=mean,
+        std=std,
+        metadata_path=str(metadata),
+    )
 
 
 @dataclass(frozen=True)
@@ -212,19 +348,18 @@ def decode_predictions(
 class NanoDet:
     """NanoDet-Plus inference using ONNX Runtime or an OpenCV fallback."""
 
-    MEAN = np.asarray((103.53, 116.28, 123.675), dtype=np.float32)
-    STD = np.asarray((57.375, 57.12, 58.395), dtype=np.float32)
-
     def __init__(
         self,
         model_path: str,
-        input_size: tuple[int, int] = (320, 320),
+        input_size: tuple[int, int] = DEFAULT_INPUT_SIZE,
         score_threshold: float = 0.4,
         nms_threshold: float = 0.6,
         max_detections: int = 100,
         class_names: Sequence[str] = COCO_CLASS_NAMES,
-        strides: Sequence[int] = (8, 16, 32, 64),
-        reg_max: int = 7,
+        strides: Sequence[int] = DEFAULT_STRIDES,
+        reg_max: int = DEFAULT_REG_MAX,
+        mean: Sequence[float] = DEFAULT_MEAN,
+        std: Sequence[float] = DEFAULT_STD,
         runtime: str = "auto",
         runtime_threads: int = 4,
         runtime_allow_spinning: bool = False,
@@ -239,6 +374,14 @@ class NanoDet:
             raise ValueError("runtime must be auto, onnxruntime, or opencv")
         if runtime_threads < 0:
             raise ValueError("runtime_threads must be non-negative")
+        if len(input_size) != 2 or any(int(value) <= 0 for value in input_size):
+            raise ValueError("input_size must contain two positive values")
+        if not class_names:
+            raise ValueError("class_names must not be empty")
+        if len(mean) != 3 or len(std) != 3:
+            raise ValueError("mean and std must each contain three values")
+        if any(float(value) == 0.0 for value in std):
+            raise ValueError("std values must be non-zero")
 
         self.input_size = tuple(input_size)
         self.score_threshold = score_threshold
@@ -247,6 +390,8 @@ class NanoDet:
         self.class_names = tuple(class_names)
         self.reg_max = reg_max
         self.priors = generate_center_priors(self.input_size, strides)
+        self.mean = np.asarray(mean, dtype=np.float32)
+        self.std = np.asarray(std, dtype=np.float32)
         self.runtime_name = ""
         self._session = None
         self._input_name = ""
@@ -280,7 +425,41 @@ class NanoDet:
                     sess_options=options,
                     providers=["CPUExecutionProvider"],
                 )
-                self._input_name = self._session.get_inputs()[0].name
+                model_inputs = self._session.get_inputs()
+                if len(model_inputs) != 1:
+                    raise ValueError(
+                        f"Expected one NanoDet model input, got {len(model_inputs)}"
+                    )
+                model_input = model_inputs[0]
+                expected_input_shape = (
+                    1,
+                    3,
+                    self.input_size[1],
+                    self.input_size[0],
+                )
+                if all(isinstance(value, int) for value in model_input.shape) and tuple(
+                    model_input.shape
+                ) != expected_input_shape:
+                    raise ValueError(
+                        f"Expected NanoDet input {expected_input_shape}, "
+                        f"model requires {tuple(model_input.shape)}"
+                    )
+                model_outputs = self._session.get_outputs()
+                expected_output_shape = (
+                    1,
+                    self.priors.shape[0],
+                    len(self.class_names) + 4 * (self.reg_max + 1),
+                )
+                if (
+                    len(model_outputs) == 1
+                    and all(isinstance(value, int) for value in model_outputs[0].shape)
+                    and tuple(model_outputs[0].shape) != expected_output_shape
+                ):
+                    raise ValueError(
+                        f"Expected NanoDet output {expected_output_shape}, "
+                        f"model provides {tuple(model_outputs[0].shape)}"
+                    )
+                self._input_name = model_input.name
                 self.runtime_name = "onnxruntime"
 
         if self._session is None:
@@ -296,7 +475,7 @@ class NanoDet:
         if image is None or image.ndim != 3 or image.shape[2] != 3:
             raise ValueError("Expected a non-empty BGR image with three channels")
         resized = cv2.resize(image, self.input_size, interpolation=cv2.INTER_LINEAR)
-        normalized = (resized.astype(np.float32) - self.MEAN) / self.STD
+        normalized = (resized.astype(np.float32) - self.mean) / self.std
         return np.ascontiguousarray(normalized.transpose(2, 0, 1)[None, ...])
 
     def detect(self, image: np.ndarray) -> InferenceResult:

@@ -1,7 +1,9 @@
 # NanoDet ROS 2 camera detection
 
 This workspace contains a resource-conscious ROS 2 Humble node that runs
-NanoDet-Plus-m at 320 x 320 on a live image topic. It publishes both standard
+NanoDet-Plus on a live image topic. The bundled model uses 320 x 320 COCO
+inference, while custom models can provide their input geometry, classes, and
+preprocessing in an adjacent metadata file. The node publishes both standard
 2D detection messages and an optional image with bounding boxes.
 
 The repository, workspace, and ROS package are named `nanodet_ros2`. This name
@@ -20,8 +22,8 @@ This repository is checked out in the SyncRobot workspace as
 | Published | `/nanodet/image` | `sensor_msgs/msg/Image` |
 
 The output image keeps the input image's timestamp and frame ID. The detection
-message contains COCO class names, confidence scores, and boxes in the original
-camera-image coordinates.
+message contains model class names, confidence scores, and boxes in the
+original camera-image coordinates.
 
 ## Build
 
@@ -108,8 +110,9 @@ All parameters can be edited in
 `src/nanodet_ros2/config/detector.yaml` or overridden on launch. Useful launch
 arguments include `confidence_threshold`, `nms_threshold`, `max_rate_hz`,
 `runtime`, `runtime_threads`, `runtime_allow_spinning`, `publish_annotated`, and
-`model_path`. `input_reliability` and `output_reliability` accept `best_effort`
-or `reliable`; the camera publisher and detector input must use compatible QoS.
+`model_path`. `model_metadata_path` can select a non-adjacent metadata file.
+`input_reliability` and `output_reliability` accept `best_effort` or `reliable`;
+the camera publisher and detector input must use compatible QoS.
 
 ### Watch live detection and CPU usage
 
@@ -157,6 +160,33 @@ matching class list.
 
 This output is suitable for visualization and experimentation. Do not use a
 2D detector as the robot's only collision-avoidance or safety input.
+
+### Custom warehouse model
+
+When `model_path` is set, the node automatically looks beside the ONNX file for
+a sidecar with the same stem and the suffix `.metadata.json`. The sidecar is
+validated against the model SHA-256 and supplies the input size, classes,
+strides, `reg_max`, mean, standard deviation, layout, color order, and expected
+output shape.
+
+The warehouse model in this checkout can be launched with:
+
+```bash
+ros2 launch nanodet_ros2 detector.launch.py \
+  model_path:=$PWD/outputs/nanodet-plus-m_416_warehouse.onnx \
+  allowed_labels:=person,pallet,barcode_1d,barcode_2d
+```
+
+Its adjacent `nanodet-plus-m_416_warehouse.metadata.json` is discovered
+automatically. If the metadata has another name or location, pass it explicitly:
+
+```bash
+ros2 launch nanodet_ros2 detector.launch.py \
+  model_path:=/absolute/path/warehouse.onnx \
+  model_metadata_path:=/absolute/path/warehouse.metadata.json
+```
+
+Models without a sidecar continue to use the legacy 320 x 320 COCO defaults.
 
 ## Model attribution
 

@@ -1,10 +1,15 @@
+import hashlib
+import json
+
 import numpy as np
+import pytest
 
 from nanodet_ros2.nanodet_engine import (
     COCO_CLASS_NAMES,
     _hard_nms,
     decode_predictions,
     generate_center_priors,
+    load_model_config,
 )
 
 
@@ -14,6 +19,64 @@ def test_center_priors_match_320_model_shape():
     assert priors.shape == (2125, 4)
     np.testing.assert_array_equal(priors[0], [0.0, 0.0, 8.0, 8.0])
     np.testing.assert_array_equal(priors[-1], [256.0, 256.0, 64.0, 64.0])
+
+
+def test_center_priors_match_416_model_shape():
+    priors = generate_center_priors((416, 416), (8, 16, 32, 64))
+
+    assert priors.shape == (3598, 4)
+
+
+def test_model_config_uses_legacy_defaults_without_sidecar(tmp_path):
+    model = tmp_path / "legacy.onnx"
+    model.write_bytes(b"legacy")
+
+    config = load_model_config(str(model))
+
+    assert config.input_size == (320, 320)
+    assert config.class_names == COCO_CLASS_NAMES
+    assert config.metadata_path is None
+
+
+def test_model_config_loads_and_validates_adjacent_sidecar(tmp_path):
+    model = tmp_path / "warehouse.onnx"
+    model.write_bytes(b"warehouse-model")
+    metadata = {
+        "input_size": [416, 416],
+        "input_layout": "NCHW",
+        "input_color": "BGR",
+        "mean": [103.53, 116.28, 123.675],
+        "std": [57.375, 57.12, 58.395],
+        "strides": [8, 16, 32, 64],
+        "reg_max": 7,
+        "class_names": ["person", "pallet", "barcode_1d", "barcode_2d"],
+        "output_shape": [1, 3598, 36],
+        "sha256": hashlib.sha256(model.read_bytes()).hexdigest(),
+    }
+    sidecar = model.with_suffix(".metadata.json")
+    sidecar.write_text(json.dumps(metadata), encoding="utf-8")
+
+    config = load_model_config(str(model))
+
+    assert config.input_size == (416, 416)
+    assert config.class_names == (
+        "person",
+        "pallet",
+        "barcode_1d",
+        "barcode_2d",
+    )
+    assert config.metadata_path == str(sidecar)
+
+
+def test_model_config_rejects_hash_mismatch(tmp_path):
+    model = tmp_path / "warehouse.onnx"
+    model.write_bytes(b"warehouse-model")
+    model.with_suffix(".metadata.json").write_text(
+        json.dumps({"sha256": "0" * 64}), encoding="utf-8"
+    )
+
+    with pytest.raises(ValueError, match="SHA-256 mismatch"):
+        load_model_config(str(model))
 
 
 def test_hard_nms_removes_overlapping_lower_score_box():

@@ -1,6 +1,7 @@
 nanodet_detector:
   ros__parameters:
     model_path: ""
+    model_metadata_path: ""
     input_topic: /camera/image_raw
     detections_topic: /nanodet/detections
     annotated_topic: /nanodet/image

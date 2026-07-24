@@ -1,0 +1,23 @@
+[NanoDet][07-22 17:27:46]INFO: Setting up data...
+[NanoDet][07-22 17:27:46]INFO: Creating model...
+[NanoDet][07-22 17:27:47]INFO: Starting testing...
+[NanoDet][07-22 17:27:47]INFO: Loaded average state from checkpoint.
+[NanoDet][07-22 17:27:59]INFO: 
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.557
+ Average Precision  (AP) @[ IoU=0.50      | area=   all | maxDets=100 ] = 0.852
+ Average Precision  (AP) @[ IoU=0.75      | area=   all | maxDets=100 ] = 0.650
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = 0.123
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = 0.407
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.654
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=  1 ] = 0.430
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets= 10 ] = 0.599
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.635
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = 0.285
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = 0.529
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.729
+
+[NanoDet][07-22 17:27:59]INFO: 
+| class      | AP50   | mAP   | class      | AP50   | mAP   |
+|:-----------|:-------|:------|:-----------|:-------|:------|
+| person     | 62.6   | 31.9  | pallet     | 88.2   | 57.6  |
+| barcode_1d | 98.7   | 71.1  | barcode_2d | 91.3   | 62.2  |

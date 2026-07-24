@@ -14,7 +14,7 @@ from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPo
 from sensor_msgs.msg import Image
 from vision_msgs.msg import Detection2D, Detection2DArray, ObjectHypothesisWithPose
 
-from .nanodet_engine import Detection, NanoDet
+from .nanodet_engine import Detection, NanoDet, load_model_config
 
 
 def sensor_qos(
@@ -50,6 +50,7 @@ class NanoDetNode(Node):
         )
 
         self.declare_parameter("model_path", "")
+        self.declare_parameter("model_metadata_path", "")
         self.declare_parameter("input_topic", "/camera/image_raw")
         self.declare_parameter("detections_topic", "/nanodet/detections")
         self.declare_parameter("annotated_topic", "/nanodet/image")
@@ -71,6 +72,10 @@ class NanoDetNode(Node):
             model_path = default_model
         if not os.path.isfile(model_path):
             raise FileNotFoundError(f"NanoDet model not found: {model_path}")
+        model_config = load_model_config(
+            model_path,
+            str(self.get_parameter("model_metadata_path").value),
+        )
 
         self._max_rate_hz = float(self.get_parameter("max_rate_hz").value)
         if self._max_rate_hz < 0.0:
@@ -95,6 +100,12 @@ class NanoDetNode(Node):
         self._bridge = CvBridge()
         self._detector = NanoDet(
             model_path=model_path,
+            input_size=model_config.input_size,
+            class_names=model_config.class_names,
+            strides=model_config.strides,
+            reg_max=model_config.reg_max,
+            mean=model_config.mean,
+            std=model_config.std,
             score_threshold=float(
                 self.get_parameter("confidence_threshold").value
             ),
@@ -140,7 +151,10 @@ class NanoDetNode(Node):
             f"runtime spinning="
             f"{self.get_parameter('runtime_allow_spinning').value}; "
             f"QoS={input_reliability} input/{output_reliability} output; "
-            f"model={model_path}"
+            f"model={model_path}; "
+            f"input={model_config.input_size[0]}x{model_config.input_size[1]}; "
+            f"classes={','.join(model_config.class_names)}; "
+            f"metadata={model_config.metadata_path or 'legacy defaults'}"
             f"{'; labels=' + ','.join(sorted(self._allowed_labels)) if self._allowed_labels else ''}"
         )
 

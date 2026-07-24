@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "architecture": "NanoDetPlus-m",
+  "input_size": [
+    416,
+    416
+  ],
+  "input_layout": "NCHW",
+  "input_color": "BGR",
+  "mean": [
+    103.53,
+    116.28,
+    123.675
+  ],
+  "std": [
+    57.375,
+    57.12,
+    58.395
+  ],
+  "strides": [
+    8,
+    16,
+    32,
+    64
+  ],
+  "reg_max": 7,
+  "class_names": [
+    "person",
+    "pallet",
+    "barcode_1d",
+    "barcode_2d"
+  ],
+  "output_shape": [
+    1,
+    3598,
+    36
+  ],
+  "sha256": "ecb0c0fef7f7a3459a329bd160788c62c9a69266f234e254d7ca8a49dd20d029"
+}
